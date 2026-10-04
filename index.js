@@ -4,7 +4,7 @@
  * Student:    Alinur S.
  * Student ID: 240014
  * 
- * Task B: Re-model centered geometry and implement model transformations.
+ * Task C: Perspective camera and MVP transformations.
  */
 
 "use strict";
@@ -16,12 +16,11 @@ function main() {
   const gl = canvas.getContext("webgl");
   if (!gl) { console.error("WebGL unavailable"); return; }
 
-  // Geometry: Quad helper
   function quad(v0, v1, v2, v3) {
     return [...v0, ...v1, ...v2, ...v0, ...v2, ...v3];
   }
 
-  // 1. Centered Cube [-0.5, 0.5]^3
+  // Centered Cube [-0.5, 0.5]^3
   const cFLB = [-0.5, -0.5,  0.5], cFRB = [ 0.5, -0.5,  0.5];
   const cFRT = [ 0.5,  0.5,  0.5], cFLT = [-0.5,  0.5,  0.5];
   const cBLB = [-0.5, -0.5, -0.5], cBRB = [ 0.5, -0.5, -0.5];
@@ -36,23 +35,15 @@ function main() {
     ...quad(cFRB, cBRB, cBRT, cFRT)
   ];
 
-  // 2. Centered Two-Step Staircase [-0.5, 0.5]^3
+  // Centered Staircase [-0.5, 0.5]^3
   const pA = [-0.5, -0.5,  0.5], pB = [ 0.5, -0.5,  0.5], pC = [ 0.5,  0.0,  0.5];
   const pD = [ 0.0,  0.0,  0.5], pE = [ 0.0,  0.5,  0.5], pF = [-0.5,  0.5,  0.5];
   const pA2 = [-0.5, -0.5, -0.5], pB2 = [ 0.5, -0.5, -0.5], pC2 = [ 0.5,  0.0, -0.5];
   const pD2 = [ 0.0,  0.0, -0.5], pE2 = [ 0.0,  0.5, -0.5], pF2 = [-0.5,  0.5, -0.5];
 
-  const stairFront = [
-    ...pA, ...pB, ...pC, ...pA, ...pC, ...pD,
-    ...pA, ...pD, ...pE, ...pA, ...pE, ...pF
-  ];
-  const stairBack = [
-    ...pB2, ...pA2, ...pF2, ...pB2, ...pF2, ...pE2,
-    ...pB2, ...pE2, ...pD2, ...pB2, ...pD2, ...pC2
-  ];
-
   const stairPositions = [
-    ...stairFront, ...stairBack,
+    ...pA, ...pB, ...pC, ...pA, ...pC, ...pD, ...pA, ...pD, ...pE, ...pA, ...pE, ...pF,
+    ...pB2, ...pA2, ...pF2, ...pB2, ...pF2, ...pE2, ...pB2, ...pE2, ...pD2, ...pB2, ...pD2, ...pC2,
     ...quad(pA2, pB2, pB, pA),
     ...quad(pB, pB2, pC2, pC),
     ...quad(pC2, pC, pD, pD2),
@@ -65,7 +56,6 @@ function main() {
   const CUBE_VERT_COUNT = 36;
   const STAIR_VERT_COUNT = 60;
 
-  // Colors
   function flatColor(n, r, g, b) {
     const a = [];
     for (let i = 0; i < n; i++) a.push(r, g, b, 1.0);
@@ -89,7 +79,6 @@ function main() {
   ];
   const colors = [...cubeColors, ...stairColors];
 
-  // GPU Buffers
   const posBuf = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
@@ -98,14 +87,16 @@ function main() {
   gl.bindBuffer(gl.ARRAY_BUFFER, colBuf);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(colors), gl.STATIC_DRAW);
 
-  // Shaders
+  // Exact shader line as required: gl_Position = uProjectionMatrix * uViewMatrix * uModelMatrix * aPosition;
   const vsSource = `
     attribute vec4 aPosition;
     attribute vec4 aVertexColor;
     uniform mat4 uModelMatrix;
+    uniform mat4 uViewMatrix;
+    uniform mat4 uProjectionMatrix;
     varying lowp vec4 vColor;
     void main() {
-      gl_Position = uModelMatrix * aPosition;
+      gl_Position = uProjectionMatrix * uViewMatrix * uModelMatrix * aPosition;
       vColor = aVertexColor;
     }
   `;
@@ -120,6 +111,8 @@ function main() {
   const aPos = gl.getAttribLocation(prog, "aPosition");
   const aCol = gl.getAttribLocation(prog, "aVertexColor");
   const uModel = gl.getUniformLocation(prog, "uModelMatrix");
+  const uView  = gl.getUniformLocation(prog, "uViewMatrix");
+  const uProj  = gl.getUniformLocation(prog, "uProjectionMatrix");
 
   gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
   gl.vertexAttribPointer(aPos, 3, gl.FLOAT, false, 0, 0);
@@ -132,10 +125,33 @@ function main() {
   gl.enable(gl.DEPTH_TEST);
   gl.depthFunc(gl.LEQUAL);
 
+  let aspect = 1.0;
+  function resize() {
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width  = Math.max(1, Math.round(canvas.clientWidth * dpr));
+    canvas.height = Math.max(1, Math.round(canvas.clientHeight * dpr));
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    aspect = canvas.clientWidth / canvas.clientHeight;
+  }
+  window.addEventListener("resize", resize);
+  resize();
+
+  const view = mat4.create();
+  const proj = mat4.create();
+
   let t = 0;
   function render() {
     t += 0.016;
-    gl.clearColor(0.1, 0.1, 0.12, 1.0);
+
+    // View: eye (0, 2.5, 7), target (0, 0, 0), up (0, 1, 0)
+    mat4.lookAt(view, [0, 2.5, 7], [0, 0, 0], [0, 1, 0]);
+    gl.uniformMatrix4fv(uView, false, view);
+
+    // Perspective: FOV 45 deg, aspect, near 1.0, far 20.0
+    mat4.perspective(proj, 45.0 * Math.PI / 180.0, aspect, 1.0, 20.0);
+    gl.uniformMatrix4fv(uProj, false, proj);
+
+    gl.clearColor(0.08, 0.08, 0.10, 1.0);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
     // Cube
