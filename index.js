@@ -4,7 +4,7 @@
  * Student:    Alinur S.
  * Student ID: 240014
  * 
- * Task C: Perspective camera and MVP transformations.
+ * Task C & E: Orthographic projection, camera orbiting, and keyboard controls.
  */
 
 "use strict";
@@ -87,7 +87,6 @@ function main() {
   gl.bindBuffer(gl.ARRAY_BUFFER, colBuf);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(colors), gl.STATIC_DRAW);
 
-  // Exact shader line as required: gl_Position = uProjectionMatrix * uViewMatrix * uModelMatrix * aPosition;
   const vsSource = `
     attribute vec4 aPosition;
     attribute vec4 aVertexColor;
@@ -125,6 +124,14 @@ function main() {
   gl.enable(gl.DEPTH_TEST);
   gl.depthFunc(gl.LEQUAL);
 
+  const state = {
+    t: 0,
+    paused: false,
+    ortho: false,
+    fovDeg: 45,
+    azimuth: 0
+  };
+
   let aspect = 1.0;
   function resize() {
     const dpr = window.devicePixelRatio || 1;
@@ -136,30 +143,58 @@ function main() {
   window.addEventListener("resize", resize);
   resize();
 
+  document.addEventListener("keydown", (e) => {
+    switch (e.key) {
+      case "p": case "P": state.paused = !state.paused; break;
+      case "o": case "O": state.ortho = !state.ortho; break;
+      case "+": case "=": case "Add":
+        if (!state.ortho) state.fovDeg = Math.min(100, state.fovDeg + 5);
+        break;
+      case "-": case "_": case "Subtract":
+        if (!state.ortho) state.fovDeg = Math.max(20, state.fovDeg - 5);
+        break;
+      case "ArrowLeft": state.azimuth -= 5; break;
+      case "ArrowRight": state.azimuth += 5; break;
+      case "r": case "R":
+        state.t = 0; state.paused = false; state.ortho = false;
+        state.fovDeg = 45; state.azimuth = 0;
+        break;
+    }
+  });
+
   const view = mat4.create();
   const proj = mat4.create();
 
-  let t = 0;
   function render() {
-    t += 0.016;
+    if (!state.paused) state.t += 0.016;
 
-    // View: eye (0, 2.5, 7), target (0, 0, 0), up (0, 1, 0)
-    mat4.lookAt(view, [0, 2.5, 7], [0, 0, 0], [0, 1, 0]);
+    // View: lookAt with azimuth orbit
+    const rad = state.azimuth * Math.PI / 180.0;
+    const eyeX = 7.0 * Math.sin(rad);
+    const eyeZ = 7.0 * Math.cos(rad);
+    mat4.lookAt(view, [eyeX, 2.5, eyeZ], [0, 0, 0], [0, 1, 0]);
     gl.uniformMatrix4fv(uView, false, view);
 
-    // Perspective: FOV 45 deg, aspect, near 1.0, far 20.0
-    mat4.perspective(proj, 45.0 * Math.PI / 180.0, aspect, 1.0, 20.0);
+    // Projection: perspective vs ortho (Fix: positive forward distances near=1.0, far=20.0)
+    const near = 1.0, far = 20.0;
+    if (!state.ortho) {
+      mat4.perspective(proj, state.fovDeg * Math.PI / 180.0, aspect, near, far);
+    } else {
+      const halfHeight = 3.1;
+      const halfWidth = halfHeight * aspect;
+      mat4.ortho(proj, -halfWidth, halfWidth, -halfHeight, halfHeight, near, far);
+    }
     gl.uniformMatrix4fv(uProj, false, proj);
 
     gl.clearColor(0.08, 0.08, 0.10, 1.0);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
     // Cube
-    gl.uniformMatrix4fv(uModel, false, cubeModelMatrix(t));
+    gl.uniformMatrix4fv(uModel, false, cubeModelMatrix(state.t));
     gl.drawArrays(gl.TRIANGLES, 0, CUBE_VERT_COUNT);
 
     // Solid
-    gl.uniformMatrix4fv(uModel, false, solidModelMatrix(t));
+    gl.uniformMatrix4fv(uModel, false, solidModelMatrix(state.t));
     gl.drawArrays(gl.TRIANGLES, CUBE_VERT_COUNT, STAIR_VERT_COUNT);
 
     requestAnimationFrame(render);
