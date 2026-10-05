@@ -1,185 +1,125 @@
-// PA1 – 3D Shapes in WebGL
-// Student: Alinur S.   ID: 240014
-// Variant: last digit 4 → Two-step staircase (60 vertices)
-//          second-to-last digit 1 → 1 mod 4 = 1 → offset (-0.15, +0.15)
-//          Visible faces: FRONT, TOP, LEFT
+/**
+ * PA2 – Matrix Transformations and Perspective
+ * Course:     AR/VR/XR Applications (AIB), 6B04103 AI Business, 3rd year
+ * Student:    Alinur S.
+ * Student ID: 240014
+ * 
+ * Variant Parameters (ID 240014):
+ *   - Last digit = 4: Assigned Solid = Two-step staircase (PA1 solid, 60 vertices)
+ *   - Last digit = 4: Orbit Period T = 6 + 4 = 10.0 s
+ *   - 2nd-to-last = 1: Cube Spin Axis = 1 mod 3 = 1 → y-axis [0, 1, 0]
+ *   - 3rd-to-last = 0: Orbit Plane = 0 mod 3 = 0 → horizontal (around y-axis)
+ *   - 4th-to-last = 0: Camera = 0 mod 2 = 0 → eye (0, 2.5, 7), FOV 45°
+ * 
+ * Fixed Parameters:
+ *   - Cube spin speed: 1.2 rad/s
+ *   - Orbit radius:    2.5 units from cube center
+ *   - Solid self-spin: 2.0 rad/s around its own y-axis
+ *   - Solid pulse:     s(t) = 0.65 + 0.15 * sin(2πt / 3)
+ *   - Camera target:   (0, 0, 0), Up: (0, 1, 0)
+ */
+
+"use strict";
 
 main();
 
 function main() {
-
-  /*========== Create a WebGL Context ==========*/
+  /*========== 1. Create WebGL Context (once) ==========*/
   const canvas = document.querySelector("#c");
   const gl = canvas.getContext("webgl");
   if (!gl) {
     console.error("WebGL unavailable – check browser support.");
-    document.getElementById("status").textContent = "WebGL unavailable";
+    const statusEl = document.getElementById("status");
+    if (statusEl) statusEl.textContent = "Error: WebGL 1.0 unavailable in this browser.";
     return;
   }
 
-  /*========== Define and Store the Geometry ==========*/
+  /*========== 2. Define and Store Geometry (once) ==========*/
 
-  // -----------------------------------------------------------------------
-  // DEPTH ILLUSION RULE (Ch.3 style, no matrices)
-  // ID 240014: second-to-last digit = 1, 1 mod 4 = 1 → (o_x, o_y) = (-0.15, +0.15)
-  // xdraw = x + o_x * (z + 0.5)
-  // ydraw = y + o_y * (z + 0.5)
-  // Front vertices (z = -0.5) → factor = 0 → no shift
-  // Back  vertices (z = +0.5) → factor = 1 → full shift
-  // -----------------------------------------------------------------------
-  const OX = -0.15;
-  const OY = +0.15;
-
-  /**
-   * Apply the depth-illusion shift to a raw vertex [x, y, z].
-   * Returns [xdraw, ydraw, z] — z is kept for depth testing.
-   */
-  function shift(x, y, z) {
-    const factor = z + 0.5;          // 0 at front (z=-0.5), 1 at back (z=+0.5)
-    return [x + OX * factor, y + OY * factor, z];
-  }
-
-  // -----------------------------------------------------------------------
-  // TASK B – FULL CUBE (36 vertices, 12 triangles, 6 faces)
-  // Size: 0.5 × 0.5 in x and y; depth z ∈ [-0.5, +0.5]
-  // Placed in the LEFT half (all drawn x < 0)
-  // Raw corners (before shift):
-  //   Front: z = -0.5   fBL(-0.75,-0.25), fBR(-0.25,-0.25), fTR(-0.25,+0.25), fTL(-0.75,+0.25)
-  //   Back:  z = +0.5   bBL(-0.75,-0.25), bBR(-0.25,-0.25), bTR(-0.25,+0.25), bTL(-0.75,+0.25)
-  //          after shift: bBL(-0.90,-0.10), bBR(-0.40,-0.10), bTR(-0.40,+0.40), bTL(-0.90,+0.40)
-  // -----------------------------------------------------------------------
-
-  // Raw (unshifted) corner positions
-  const fBL = [-0.75, -0.25, -0.5];
-  const fBR = [-0.25, -0.25, -0.5];
-  const fTR = [-0.25, +0.25, -0.5];
-  const fTL = [-0.75, +0.25, -0.5];
-  const bBL = [-0.75, -0.25, +0.5];
-  const bBR = [-0.25, -0.25, +0.5];
-  const bTR = [-0.25, +0.25, +0.5];
-  const bTL = [-0.75, +0.25, +0.5];
-
-  // Shifted corners
-  const sfBL = shift(...fBL), sfBR = shift(...fBR);
-  const sfTR = shift(...fTR), sfTL = shift(...fTL);
-  const sbBL = shift(...bBL), sbBR = shift(...bBR);
-  const sbTR = shift(...bTR), sbTL = shift(...bTL);
-
-  /**
-   * Build two CCW triangles from 4 corners forming a quad.
-   * v0,v1,v2,v3 are the 4 corners in order (e.g. bottom-left, bottom-right, top-right, top-left).
-   */
+  // Helper: Build 2 triangles (6 vertices) from 4 corners of a quad
   function quad(v0, v1, v2, v3) {
     return [
-      ...v0, ...v1, ...v2,   // triangle 1
-      ...v0, ...v2, ...v3    // triangle 2
+      ...v0, ...v1, ...v2,
+      ...v0, ...v2, ...v3
     ];
   }
 
-  // 6 faces × 2 triangles × 3 vertices = 36 vertices
+  // -------------------------------------------------------------------------
+  // CUBE GEOMETRY (36 vertices)
+  // Re-modelled from -0.5 to +0.5 on all 3 axes, centred on origin (0, 0, 0)
+  // -------------------------------------------------------------------------
+  const cFLB = [-0.5, -0.5,  0.5]; // Front-Left-Bottom
+  const cFRB = [ 0.5, -0.5,  0.5]; // Front-Right-Bottom
+  const cFRT = [ 0.5,  0.5,  0.5]; // Front-Right-Top
+  const cFLT = [-0.5,  0.5,  0.5]; // Front-Left-Top
+  const cBLB = [-0.5, -0.5, -0.5]; // Back-Left-Bottom
+  const cBRB = [ 0.5, -0.5, -0.5]; // Back-Right-Bottom
+  const cBRT = [ 0.5,  0.5, -0.5]; // Back-Right-Top
+  const cBLT = [-0.5,  0.5, -0.5]; // Back-Left-Top
+
   const cubePositions = [
-    // Front face  (z = -0.5)  – facing viewer
-    ...quad(sfBL, sfBR, sfTR, sfTL),
-    // Back face   (z = +0.5)  – facing away
-    ...quad(sbBR, sbBL, sbTL, sbTR),
-    // Top face    (y = +0.25) – visible with offset (-0.15,+0.15)
-    ...quad(sfTL, sfTR, sbTR, sbTL),
-    // Bottom face (y = -0.25)
-    ...quad(sbBL, sbBR, sfBR, sfBL),
-    // Left face   (x = -0.75) – visible with offset (-0.15,+0.15)
-    ...quad(sbBL, sfBL, sfTL, sbTL),
-    // Right face  (x = -0.25)
-    ...quad(sfBR, sbBR, sbTR, sfTR),
+    // Front face (z = +0.5)
+    ...quad(cFLB, cFRB, cFRT, cFLT),
+    // Back face (z = -0.5)
+    ...quad(cBRB, cBLB, cBLT, cBRT),
+    // Top face (y = +0.5)
+    ...quad(cFLT, cFRT, cBRT, cBLT),
+    // Bottom face (y = -0.5)
+    ...quad(cBLB, cBRB, cFRB, cFLB),
+    // Left face (x = -0.5)
+    ...quad(cBLB, cFLB, cFLT, cBLT),
+    // Right face (x = +0.5)
+    ...quad(cFRB, cBRB, cBRT, cFRT)
   ];
-  console.assert(cubePositions.length === 36 * 3,
-    `Cube position array: expected ${36*3}, got ${cubePositions.length}`);
+  console.assert(cubePositions.length === 36 * 3, `Cube pos: expected 108, got ${cubePositions.length}`);
 
-  // -----------------------------------------------------------------------
-  // TASK C – TWO-STEP STAIRCASE (60 vertices, variant digit = 4)
-  // Profile in x-y plane, extruded along z ∈ [-0.5, +0.5]
-  // Placed in RIGHT half (all drawn x > 0)
-  //
-  // Raw profile (before shift):
-  //   Bottom step: x ∈ [0.15, 0.65], y ∈ [-0.30, -0.05]
-  //   Top step:    x ∈ [0.15, 0.40], y ∈ [-0.05, +0.30]
-  //
-  //  y
-  //  +0.30  ┌──────┐
-  //         │ top  │
-  //  -0.05  │      └──────────┐
-  //         │    bottom       │
-  //  -0.30  └─────────────────┘
-  //         x=0.15  x=0.40   x=0.65
-  //
-  // Faces:
-  //  1. Front face  (z=-0.5): 4 triangles to fill L-shape = 12 vertices
-  //  2. Back face   (z=+0.5): same L-shape, shifted        = 12 vertices
-  //  3-8. 6 rectangular side faces × 6 vertices each       = 36 vertices
-  //  Total = 60 ✓
-  // -----------------------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // TWO-STEP STAIRCASE GEOMETRY (60 vertices, PA1 Solid for last digit = 4)
+  // Centred on its own origin so it fits inside a 1 × 1 × 1 box [-0.5, +0.5]^3
+  // Profile in xy:
+  //   Bottom step: x in [-0.5, +0.5], y in [-0.5,  0.0]
+  //   Top step:    x in [-0.5,  0.0], y in [ 0.0, +0.5]
+  // Extruded along z in [-0.5, +0.5]
+  // -------------------------------------------------------------------------
+  // Profile corners on front plane (z = +0.5)
+  const pA = [-0.5, -0.5,  0.5]; // Bottom-Left
+  const pB = [ 0.5, -0.5,  0.5]; // Bottom-Right
+  const pC = [ 0.5,  0.0,  0.5]; // Step-Tread-Right
+  const pD = [ 0.0,  0.0,  0.5]; // Step-Inner-Corner
+  const pE = [ 0.0,  0.5,  0.5]; // Top-Step-Right
+  const pF = [-0.5,  0.5,  0.5]; // Top-Step-Left
 
-  // Raw profile corners (L-shape, front face z=-0.5)
-  // Named by position around the L outline clockwise from bottom-left
-  // Profile shifted right by 0.05 vs original so that after depth-illusion
-  // back-face shift of -0.15 the leftmost drawn x is 0.20-0.15 = 0.05 > 0 ✓
-  const s_A = [0.20, -0.30, -0.5];   // bottom-left
-  const s_B = [0.70, -0.30, -0.5];   // bottom-right
-  const s_C = [0.70, -0.05, -0.5];   // inner-right (step corner)
-  const s_D = [0.45, -0.05, -0.5];   // inner notch-right
-  const s_E = [0.45, +0.30, -0.5];   // top-right
-  const s_F = [0.20, +0.30, -0.5];   // top-left
+  // Corresponding profile corners on back plane (z = -0.5)
+  const pA2 = [-0.5, -0.5, -0.5];
+  const pB2 = [ 0.5, -0.5, -0.5];
+  const pC2 = [ 0.5,  0.0, -0.5];
+  const pD2 = [ 0.0,  0.0, -0.5];
+  const pE2 = [ 0.0,  0.5, -0.5];
+  const pF2 = [-0.5,  0.5, -0.5];
 
-  // Back face raw profile (same x,y, z=+0.5)
-  const s_A2 = [0.20, -0.30, +0.5];
-  const s_B2 = [0.70, -0.30, +0.5];
-  const s_C2 = [0.70, -0.05, +0.5];
-  const s_D2 = [0.45, -0.05, +0.5];
-  const s_E2 = [0.45, +0.30, +0.5];
-  const s_F2 = [0.20, +0.30, +0.5];
-
-  // Shifted versions
-  const ssA  = shift(...s_A),  ssB  = shift(...s_B),  ssC  = shift(...s_C);
-  const ssD  = shift(...s_D),  ssE  = shift(...s_E),  ssF  = shift(...s_F);
-  const ssA2 = shift(...s_A2), ssB2 = shift(...s_B2), ssC2 = shift(...s_C2);
-  const ssD2 = shift(...s_D2), ssE2 = shift(...s_E2), ssF2 = shift(...s_F2);
-
-  // Front L-face: triangulate into 4 triangles (12 vertices)
-  // Split: main rect (A,B,C,D intermediate?), need fan or explicit split
-  // L-shape vertices in order: A(bot-left), B(bot-right), C(step-right), D(notch-right), E(top-right), F(top-left)
-  // Fan from A: A-B-C, A-C-D, A-D-E, A-E-F
+  // Front L-face (z = +0.5): 4 triangles fan from pA = 12 vertices
   const stairFront = [
-    ...ssA, ...ssB, ...ssC,
-    ...ssA, ...ssC, ...ssD,
-    ...ssA, ...ssD, ...ssE,
-    ...ssA, ...ssE, ...ssF,
-  ]; // 12 vertices
+    ...pA, ...pB, ...pC,
+    ...pA, ...pC, ...pD,
+    ...pA, ...pD, ...pE,
+    ...pA, ...pE, ...pF
+  ];
 
-  // Back L-face: same, wound opposite for correct face (B2->A2 order)
+  // Back L-face (z = -0.5): 4 triangles wound for opposite facing = 12 vertices
   const stairBack = [
-    ...ssB2, ...ssA2, ...ssF2,
-    ...ssB2, ...ssF2, ...ssE2,
-    ...ssB2, ...ssE2, ...ssD2,
-    ...ssB2, ...ssD2, ...ssC2,
-  ]; // 12 vertices
+    ...pB2, ...pA2, ...pF2,
+    ...pB2, ...pF2, ...pE2,
+    ...pB2, ...pE2, ...pD2,
+    ...pB2, ...pD2, ...pC2
+  ];
 
-  // Side faces (6 rectangular faces, each 2 triangles = 6 vertices):
-  // 1. Bottom face: A→B (front) and B2→A2 (back)  [y = -0.30]
-  const stairBottom   = quad(ssA2, ssB2, ssB, ssA);      // 6 verts
-
-  // 2. Right face of bottom step: B→C [x = 0.65, y = -0.30 to -0.05]
-  const stairRight    = quad(ssB, ssB2, ssC2, ssC);      // 6 verts (front to back)
-
-  // 3. Step horizontal top (notch): C→D [y = -0.05, x = 0.40 to 0.65]
-  const stairNotchH   = quad(ssC2, ssC, ssD, ssD2);      // 6 verts
-
-  // 4. Step vertical (inner): D→E [x = 0.40, y = -0.05 to +0.30]
-  const stairNotchV   = quad(ssD, ssD2, ssE2, ssE);      // 6 verts
-
-  // 5. Top face of top step: E→F [y = +0.30]
-  const stairTop      = quad(ssE, ssE2, ssF2, ssF);      // 6 verts
-
-  // 6. Left face: F→A [x = 0.15]
-  const stairLeft     = quad(ssF2, ssA2, ssA, ssF);      // 6 verts
+  // 6 side rectangular faces (2 triangles each = 6 vertices each, total 36 verts)
+  const stairBottom = quad(pA2, pB2, pB, pA);   // y = -0.5
+  const stairRight  = quad(pB, pB2, pC2, pC);   // x = +0.5, y in [-0.5, 0.0]
+  const stairNotchH = quad(pC2, pC, pD, pD2);   // y = 0.0,  x in [0.0, 0.5]
+  const stairNotchV = quad(pD, pD2, pE2, pE);   // x = 0.0,  y in [0.0, 0.5]
+  const stairTop    = quad(pE, pE2, pF2, pF);   // y = +0.5, x in [-0.5, 0.0]
+  const stairLeft   = quad(pF2, pA2, pA, pF);   // x = -0.5, y in [-0.5, 0.5]
 
   const stairPositions = [
     ...stairFront,
@@ -189,146 +129,101 @@ function main() {
     ...stairNotchH,
     ...stairNotchV,
     ...stairTop,
-    ...stairLeft,
+    ...stairLeft
   ];
-  console.assert(stairPositions.length === 60 * 3,
-    `Stair position array: expected ${60*3}, got ${stairPositions.length}`);
+  console.assert(stairPositions.length === 60 * 3, `Stair pos: expected 180, got ${stairPositions.length}`);
 
-  // -----------------------------------------------------------------------
-  // Combined position buffer: cube (36 verts) then staircase (60 verts)
-  // -----------------------------------------------------------------------
+  // Combined position array (one buffer, two separate draw calls)
   const positions = [...cubePositions, ...stairPositions];
-  const CUBE_VERT_COUNT  = cubePositions.length  / 3;   // 36
-  const STAIR_VERT_COUNT = stairPositions.length / 3;   // 60
-  console.assert(CUBE_VERT_COUNT  === 36, "Cube vertex count check");
-  console.assert(STAIR_VERT_COUNT === 60, "Stair vertex count check");
+  const CUBE_VERT_COUNT = 36;
+  const STAIR_VERT_COUNT = 60;
+  const TOTAL_VERTS = CUBE_VERT_COUNT + STAIR_VERT_COUNT; // 96
 
-  // -----------------------------------------------------------------------
-  // TASK D – COLOURS
-  // Every face: distinct flat colour; no two adjacent faces the same.
-  // Exactly ONE visible face per solid has a gradient (≥3 different vertex colours).
-  //
-  // CUBE colours (per face, 6 vertices each):
-  //   Front  → GRADIENT (red→orange→yellow – the most visible face)
-  //   Back   → dark grey
-  //   Top    → cyan / teal  (visible)
-  //   Bottom → brown
-  //   Left   → lime green   (visible)
-  //   Right  → dark blue
-  //
-  // STAIRCASE colours (per-face section):
-  //   Front  → GRADIENT (purple→magenta→pink)
-  //   Back   → dark navy
-  //   Bottom → deep orange
-  //   Right  → steel blue
-  //   NotchH → olive
-  //   NotchV → hot pink
-  //   Top    → gold
-  //   Left   → forest green
-  // -----------------------------------------------------------------------
-
-  /**
-   * Returns an array of n × 4 float values all equal to [r,g,b,a].
-   */
-  function flatColor(n, r, g, b, a = 1.0) {
-    const arr = [];
-    for (let i = 0; i < n; i++) arr.push(r, g, b, a);
-    return arr;
+  // -------------------------------------------------------------------------
+  // PER-VERTEX COLOURS (from PA1)
+  // Distinct flat colours per face, gradient on front face
+  // -------------------------------------------------------------------------
+  function flatColor(numVerts, r, g, b, a = 1.0) {
+    const res = [];
+    for (let i = 0; i < numVerts; i++) res.push(r, g, b, a);
+    return res;
   }
 
-  // CUBE colour arrays (6 vertices per face)
-  const cubeFront_colors = [
-    // Gradient: triangle 1 – red, orange, yellow
-    1.0, 0.0, 0.0, 1.0,   // BL – red
-    1.0, 0.5, 0.0, 1.0,   // BR – orange
-    1.0, 1.0, 0.0, 1.0,   // TR – yellow
-    // triangle 2
-    1.0, 0.0, 0.0, 1.0,   // BL – red
-    1.0, 1.0, 0.0, 1.0,   // TR – yellow
-    1.0, 0.6, 0.2, 1.0,   // TL – light-orange
+  // Cube colors (36 verts)
+  const cubeFrontColors = [
+    // Gradient on front face (red -> orange -> yellow)
+    1.0, 0.0, 0.0, 1.0,   // BL
+    1.0, 0.5, 0.0, 1.0,   // BR
+    1.0, 1.0, 0.0, 1.0,   // TR
+    1.0, 0.0, 0.0, 1.0,   // BL
+    1.0, 1.0, 0.0, 1.0,   // TR
+    1.0, 0.6, 0.2, 1.0    // TL
   ];
-  const cubeBack_colors   = flatColor(6, 0.20, 0.20, 0.20);  // dark grey
-  const cubeTop_colors    = flatColor(6, 0.00, 0.90, 0.85);  // teal/cyan
-  const cubeBottom_colors = flatColor(6, 0.50, 0.25, 0.00);  // brown
-  const cubeLeft_colors   = flatColor(6, 0.20, 0.80, 0.20);  // lime green
-  const cubeRight_colors  = flatColor(6, 0.10, 0.10, 0.70);  // dark blue
+  const cubeBackColors   = flatColor(6, 0.20, 0.20, 0.20); // Dark grey
+  const cubeTopColors    = flatColor(6, 0.00, 0.90, 0.85); // Teal / cyan
+  const cubeBottomColors = flatColor(6, 0.50, 0.25, 0.00); // Brown
+  const cubeLeftColors   = flatColor(6, 0.20, 0.80, 0.20); // Lime green
+  const cubeRightColors  = flatColor(6, 0.10, 0.10, 0.70); // Dark blue
 
   const cubeColors = [
-    ...cubeFront_colors,
-    ...cubeBack_colors,
-    ...cubeTop_colors,
-    ...cubeBottom_colors,
-    ...cubeLeft_colors,
-    ...cubeRight_colors,
+    ...cubeFrontColors,
+    ...cubeBackColors,
+    ...cubeTopColors,
+    ...cubeBottomColors,
+    ...cubeLeftColors,
+    ...cubeRightColors
   ];
-  console.assert(cubeColors.length === 36 * 4,
-    `Cube color array: expected ${36*4}, got ${cubeColors.length}`);
 
-  // STAIRCASE colour arrays
-  // Front = gradient (12 vertices, 4 triangles fan)
-  const stairFront_colors = [
-    // tri 1: A,B,C – purple→magenta→deep pink
-    0.55, 0.00, 0.80, 1.0,
-    0.90, 0.00, 0.60, 1.0,
-    1.00, 0.10, 0.90, 1.0,
-    // tri 2: A,C,D
-    0.55, 0.00, 0.80, 1.0,
-    1.00, 0.10, 0.90, 1.0,
-    0.85, 0.00, 1.00, 1.0,
-    // tri 3: A,D,E
-    0.55, 0.00, 0.80, 1.0,
-    0.85, 0.00, 1.00, 1.0,
-    0.70, 0.00, 0.90, 1.0,
-    // tri 4: A,E,F
-    0.55, 0.00, 0.80, 1.0,
-    0.70, 0.00, 0.90, 1.0,
-    0.60, 0.00, 0.85, 1.0,
-  ]; // 12 × 4 = 48 floats
-
-  const stairBack_colors   = flatColor(12, 0.05, 0.05, 0.25);  // dark navy
-  const stairBottom_colors = flatColor(6,  0.85, 0.35, 0.00);  // deep orange
-  const stairRight_colors  = flatColor(6,  0.27, 0.51, 0.71);  // steel blue
-  const stairNotchH_colors = flatColor(6,  0.50, 0.50, 0.00);  // olive
-  const stairNotchV_colors = flatColor(6,  1.00, 0.08, 0.58);  // hot pink
-  const stairTop_colors    = flatColor(6,  1.00, 0.84, 0.00);  // gold
-  const stairLeft_colors   = flatColor(6,  0.13, 0.55, 0.13);  // forest green
+  // Staircase colors (60 verts)
+  const stairFrontColors = [
+    // Gradient on front L-face (purple -> magenta -> pink, 12 verts)
+    0.55, 0.00, 0.80, 1.0, 0.90, 0.00, 0.60, 1.0, 1.00, 0.10, 0.90, 1.0,
+    0.55, 0.00, 0.80, 1.0, 1.00, 0.10, 0.90, 1.0, 0.85, 0.00, 1.00, 1.0,
+    0.55, 0.00, 0.80, 1.0, 0.85, 0.00, 1.00, 1.0, 0.70, 0.00, 0.90, 1.0,
+    0.55, 0.00, 0.80, 1.0, 0.70, 0.00, 0.90, 1.0, 0.60, 0.00, 0.85, 1.0
+  ];
+  const stairBackColors   = flatColor(12, 0.05, 0.05, 0.25); // Dark navy
+  const stairBottomColors = flatColor(6,  0.85, 0.35, 0.00); // Deep orange
+  const stairRightColors  = flatColor(6,  0.27, 0.51, 0.71); // Steel blue
+  const stairNotchHColors = flatColor(6,  0.50, 0.50, 0.00); // Olive
+  const stairNotchVColors = flatColor(6,  1.00, 0.08, 0.58); // Hot pink
+  const stairTopColors    = flatColor(6,  1.00, 0.84, 0.00); // Gold
+  const stairLeftColors   = flatColor(6,  0.13, 0.55, 0.13); // Forest green
 
   const stairColors = [
-    ...stairFront_colors,
-    ...stairBack_colors,
-    ...stairBottom_colors,
-    ...stairRight_colors,
-    ...stairNotchH_colors,
-    ...stairNotchV_colors,
-    ...stairTop_colors,
-    ...stairLeft_colors,
+    ...stairFrontColors,
+    ...stairBackColors,
+    ...stairBottomColors,
+    ...stairRightColors,
+    ...stairNotchHColors,
+    ...stairNotchVColors,
+    ...stairTopColors,
+    ...stairLeftColors
   ];
-  console.assert(stairColors.length === 60 * 4,
-    `Stair color array: expected ${60*4}, got ${stairColors.length}`);
 
-  // Combined colour buffer (same order as positions)
   const colors = [...cubeColors, ...stairColors];
-  const TOTAL_VERTS = CUBE_VERT_COUNT + STAIR_VERT_COUNT; // 96
-  console.assert(colors.length === TOTAL_VERTS * 4,
-    `Total color array: expected ${TOTAL_VERTS*4}, got ${colors.length}`);
+  console.assert(colors.length === TOTAL_VERTS * 4, `Colors: expected ${TOTAL_VERTS * 4}, got ${colors.length}`);
 
-  // -----------------------------------------------------------------------
-  // Initialise GPU buffers
-  // -----------------------------------------------------------------------
-  const buffers = initBuffers(gl, positions, colors);
-  if (!buffers) return;
+  // Create GPU Buffers (once)
+  const posBuffer = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, posBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
 
-  /*========== Shaders ==========*/
+  const colBuffer = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, colBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(colors), gl.STATIC_DRAW);
 
-  /*====== Define shader source ======*/
+  /*========== 3. Shaders and Program Setup (once) ==========*/
   const vsSource = `
     attribute vec4 aPosition;
     attribute vec4 aVertexColor;
+    uniform mat4 uModelMatrix;
+    uniform mat4 uViewMatrix;
+    uniform mat4 uProjectionMatrix;
     varying lowp vec4 vColor;
     void main() {
-      gl_Position  = aPosition;
-      gl_PointSize = 6.0;
-      vColor       = aVertexColor;
+      gl_Position = uProjectionMatrix * uViewMatrix * uModelMatrix * aPosition;
+      vColor = aVertexColor;
     }
   `;
 
@@ -340,118 +235,291 @@ function main() {
     }
   `;
 
-  /*====== Create shaders ======*/
-  const vertexShader   = createShader(gl, gl.VERTEX_SHADER,   vsSource);
-  const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fsSource);
-  if (!vertexShader || !fragmentShader) return;
+  const vShader = createShader(gl, gl.VERTEX_SHADER, vsSource);
+  const fShader = createShader(gl, gl.FRAGMENT_SHADER, fsSource);
+  if (!vShader || !fShader) return;
 
-  /*====== Create shader program ======*/
-  const program = createProgram(gl, vertexShader, fragmentShader);
+  const program = createProgram(gl, vShader, fShader);
   if (!program) return;
+  gl.useProgram(program);
 
-  /*====== Connect the attribute with the vertex shader ======*/
+  // Set up Attributes (once, outside loop)
+  const aPositionLoc = gl.getAttribLocation(program, "aPosition");
+  const aColorLoc    = gl.getAttribLocation(program, "aVertexColor");
 
-  // Position attribute
-  const posAttribLoc   = gl.getAttribLocation(program, "aPosition");
-  // Colour attribute
-  const colorAttribLoc = gl.getAttribLocation(program, "aVertexColor");
+  gl.bindBuffer(gl.ARRAY_BUFFER, posBuffer);
+  gl.vertexAttribPointer(aPositionLoc, 3, gl.FLOAT, false, 0, 0);
+  gl.enableVertexAttribArray(aPositionLoc);
 
-  // Bind position buffer → tell GPU how to read it
-  gl.bindBuffer(gl.ARRAY_BUFFER, buffers.position);
-  gl.vertexAttribPointer(posAttribLoc, 3, gl.FLOAT, false, 0, 0);
-  gl.enableVertexAttribArray(posAttribLoc);
+  gl.bindBuffer(gl.ARRAY_BUFFER, colBuffer);
+  gl.vertexAttribPointer(aColorLoc, 4, gl.FLOAT, false, 0, 0);
+  gl.enableVertexAttribArray(aColorLoc);
 
-  // Bind colour buffer → tell GPU how to read it
-  gl.bindBuffer(gl.ARRAY_BUFFER, buffers.color);
-  gl.vertexAttribPointer(colorAttribLoc, 4, gl.FLOAT, false, 0, 0);
-  gl.enableVertexAttribArray(colorAttribLoc);
+  // Retrieve Uniform Locations (once, outside loop)
+  const uModelMatrixLoc      = gl.getUniformLocation(program, "uModelMatrix");
+  const uViewMatrixLoc       = gl.getUniformLocation(program, "uViewMatrix");
+  const uProjectionMatrixLoc = gl.getUniformLocation(program, "uProjectionMatrix");
 
-  // Verify buffer sizes (Task E6 support)
-  gl.bindBuffer(gl.ARRAY_BUFFER, buffers.position);
-  console.log(`Position buffer size: ${gl.getBufferParameter(gl.ARRAY_BUFFER, gl.BUFFER_SIZE)} bytes` +
-    ` (expected ${TOTAL_VERTS * 3 * 4})`);
-  gl.bindBuffer(gl.ARRAY_BUFFER, buffers.color);
-  console.log(`Color buffer size: ${gl.getBufferParameter(gl.ARRAY_BUFFER, gl.BUFFER_SIZE)} bytes` +
-    ` (expected ${TOTAL_VERTS * 4 * 4})`);
-  console.log(`Total vertices N = ${TOTAL_VERTS}`);
-
-  /*========== Drawing ==========*/
-
-  // Application state
-  const MODE_NAMES = {
-    [gl.TRIANGLES]:      "gl.TRIANGLES",
-    [gl.LINE_LOOP]:      "gl.LINE_LOOP",
-    [gl.LINES]:          "gl.LINES",
-    [gl.LINE_STRIP]:     "gl.LINE_STRIP",
-    [gl.POINTS]:         "gl.POINTS",
-    [gl.TRIANGLE_STRIP]: "gl.TRIANGLE_STRIP",
-  };
+  /*========== 4. State & Controls ==========*/
   const state = {
-    mode:      gl.TRIANGLES,
-    depth:     true,
-    cubeFirst: true,
+    t: 0.0,
+    paused: false,
+    ortho: false,
+    fovDeg: 45.0,
+    azimuth: 0.0, // Camera orbit angle in degrees
+    // Optional overrides for write-up experiments:
+    transformMode: "normal", // 'normal', 'swapA', 'swapB' for E1
+    nearOverride: null,      // for E4 near clipping
+    aspectOverride: null     // for E4 aspect = 1 test
   };
 
-  /*====== Draw the points to the screen ======*/
-  function render() {
-    // Clear
-    gl.clearColor(0.13, 0.13, 0.15, 1.0);
-    if (state.depth) {
-      gl.enable(gl.DEPTH_TEST);
-      gl.depthFunc(gl.LEQUAL);
-      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-    } else {
-      gl.disable(gl.DEPTH_TEST);
-      gl.clear(gl.COLOR_BUFFER_BIT);
+  // Enable depth testing
+  gl.enable(gl.DEPTH_TEST);
+  gl.depthFunc(gl.LEQUAL);
+
+  // Responsive canvas resize handling
+  let aspect = 1.0;
+  function resize() {
+    const dpr = window.devicePixelRatio || 1;
+    const displayWidth  = Math.max(1, Math.round(canvas.clientWidth * dpr));
+    const displayHeight = Math.max(1, Math.round(canvas.clientHeight * dpr));
+    if (canvas.width !== displayWidth || canvas.height !== displayHeight) {
+      canvas.width  = displayWidth;
+      canvas.height = displayHeight;
     }
-
-    const mode  = state.mode;
-    const cube  = { first: 0,                 count: CUBE_VERT_COUNT  };
-    const stair = { first: CUBE_VERT_COUNT,   count: STAIR_VERT_COUNT };
-
-    if (state.cubeFirst) {
-      gl.drawArrays(mode, cube.first,  cube.count);
-      gl.drawArrays(mode, stair.first, stair.count);
-    } else {
-      gl.drawArrays(mode, stair.first, stair.count);
-      gl.drawArrays(mode, cube.first,  cube.count);
-    }
-
-    // Update status label
-    const orderStr = state.cubeFirst ? "Cube → Staircase" : "Staircase → Cube";
-    document.getElementById("status").textContent =
-      `ID: 240014 | Alinur S.\n` +
-      `Mode:  ${MODE_NAMES[mode]}\n` +
-      `Depth: ${state.depth ? "ON" : "OFF"}\n` +
-      `Order: ${orderStr}\n` +
-      `[1-6] mode  [D] depth  [S] swap order`;
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    aspect = canvas.clientWidth / canvas.clientHeight;
   }
+  window.addEventListener("resize", resize);
+  resize();
 
-  // Keyboard handler
+  // Keyboard controls (Task E)
   document.addEventListener("keydown", (e) => {
     switch (e.key) {
-      case "1": state.mode = gl.TRIANGLES;      break;
-      case "2": state.mode = gl.LINE_LOOP;       break;
-      case "3": state.mode = gl.LINES;           break;
-      case "4": state.mode = gl.LINE_STRIP;      break;
-      case "5": state.mode = gl.POINTS;          break;
-      case "6": state.mode = gl.TRIANGLE_STRIP;  break;
-      case "d": case "D": state.depth = !state.depth; break;
-      case "s": case "S": state.cubeFirst = !state.cubeFirst; break;
-      default: return; // ignore other keys
+      case "p":
+      case "P":
+        state.paused = !state.paused;
+        break;
+
+      case "o":
+      case "O":
+        state.ortho = !state.ortho;
+        break;
+
+      case "+":
+      case "=":
+      case "Add":
+        if (!state.ortho) {
+          state.fovDeg = Math.min(100.0, state.fovDeg + 5.0);
+        }
+        break;
+
+      case "-":
+      case "_":
+      case "Subtract":
+        if (!state.ortho) {
+          state.fovDeg = Math.max(20.0, state.fovDeg - 5.0);
+        }
+        break;
+
+      case "ArrowLeft":
+        // Orbit camera eye counter-clockwise / left by 5 degrees
+        state.azimuth -= 5.0;
+        break;
+
+      case "ArrowRight":
+        // Orbit camera eye clockwise / right by 5 degrees
+        state.azimuth += 5.0;
+        break;
+
+      case "r":
+      case "R":
+        // Reset camera and time to start values
+        state.t = 0.0;
+        state.paused = false;
+        state.ortho = false;
+        state.fovDeg = 45.0;
+        state.azimuth = 0.0;
+        state.transformMode = "normal";
+        state.nearOverride = null;
+        state.aspectOverride = null;
+        break;
+
+      default:
+        return;
     }
-    render(); // single redraw per change — no animation loop
   });
 
-  render(); // initial draw
+  /*========== 5. Animation Loop (Task D) ==========*/
+  const statusEl = document.getElementById("status");
+  const fpsWindow = []; // Timestamps of frames in last 1000 ms
+  let then = 0;
+
+  // Working matrices (allocated once to avoid GC pressure)
+  const viewMatrix = mat4.create();
+  const projMatrix = mat4.create();
+
+  function render(nowMs) {
+    const now = nowMs * 0.001;
+    if (then === 0) then = now;
+    const dt = Math.min(now - then, 0.1); // Task D: dt clamped to 0.1 s
+    then = now;
+
+    if (!state.paused) {
+      state.t += dt;
+    }
+
+    // 1. Build View Matrix
+    // Variant Camera: Eye (0, 2.5, 7), Target (0, 0, 0), Up (0, 1, 0)
+    // Left/Right arrows orbit eye around y-axis by azimuth angle
+    const azRad = state.azimuth * (Math.PI / 180.0);
+    const eyeX = 7.0 * Math.sin(azRad);
+    const eyeY = 2.5;
+    const eyeZ = 7.0 * Math.cos(azRad);
+    mat4.lookAt(viewMatrix, [eyeX, eyeY, eyeZ], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+    gl.uniformMatrix4fv(uViewMatrixLoc, false, viewMatrix);
+
+    // 2. Build Projection Matrix
+    const currentAspect = state.aspectOverride !== null ? state.aspectOverride : aspect;
+    const near = state.nearOverride !== null ? state.nearOverride : 1.0;
+    const far  = 20.0;
+
+    if (!state.ortho) {
+      // Perspective projection: fov in radians
+      const fovRad = state.fovDeg * (Math.PI / 180.0);
+      mat4.perspective(projMatrix, fovRad, currentAspect, near, far);
+    } else {
+      // Orthographic projection: matched to roughly the same visual size
+      // Target distance d ≈ 7.433. For FOV = 45°, halfHeight = 7.433 * tan(22.5°) ≈ 3.08
+      const halfHeight = 3.1;
+      const halfWidth = halfHeight * currentAspect;
+      mat4.ortho(projMatrix, -halfWidth, halfWidth, -halfHeight, halfHeight, near, far);
+    }
+    gl.uniformMatrix4fv(uProjectionMatrixLoc, false, projMatrix);
+
+    // 3. Clear Screen
+    gl.clearColor(0.08, 0.08, 0.10, 1.0);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+    // 4. Draw Cube
+    const mCube = cubeModelMatrix(state.t);
+    gl.uniformMatrix4fv(uModelMatrixLoc, false, mCube);
+    gl.drawArrays(gl.TRIANGLES, 0, CUBE_VERT_COUNT);
+
+    // 5. Draw Solid (Two-step Staircase)
+    const mSolid = solidModelMatrix(state.t, state.transformMode);
+    gl.uniformMatrix4fv(uModelMatrixLoc, false, mSolid);
+    gl.drawArrays(gl.TRIANGLES, CUBE_VERT_COUNT, STAIR_VERT_COUNT);
+
+    // 6. Update FPS (rolling 1-second average)
+    fpsWindow.push(now);
+    while (fpsWindow.length > 0 && fpsWindow[0] <= now - 1.0) {
+      fpsWindow.shift();
+    }
+    const fps = fpsWindow.length;
+
+    // 7. Update Status Label
+    if (statusEl) {
+      const projStr = state.ortho ? "Orthographic" : "Perspective";
+      const fovStr  = state.ortho ? "N/A (ortho)" : `${state.fovDeg.toFixed(0)}°`;
+      const pauseStr = state.paused ? " [PAUSED]" : "";
+      statusEl.textContent =
+        `Student ID: 240014 | Alinur S.${pauseStr}\n` +
+        `Projection: ${projStr}\n` +
+        `FOV:        ${fovStr}\n` +
+        `Time (t):   ${state.t.toFixed(1)} s\n` +
+        `FPS:        ${fps} fps\n` +
+        `Controls:   [P] Pause  [O] Ortho  [+/-] FOV  [←/→] Orbit  [R] Reset`;
+    }
+
+    requestAnimationFrame(render);
+  }
+
+  requestAnimationFrame(render);
+
+  // Expose hooks for write-up verification, automated tests, and recording
+  window.__PA2__ = {
+    state,
+    gl,
+    canvas,
+    viewMatrix,
+    projMatrix,
+    cubeModelMatrix,
+    solidModelMatrix,
+    positions,
+    colors
+  };
 }
 
-// -------------------------------------------------------------------------
-// Helper functions
-// -------------------------------------------------------------------------
+/**
+ * Task B: Cube Model Matrix
+ * Cube stays at the origin (0, 0, 0) and spins at 1.2 rad/s
+ * around the student's variant axis: 1 mod 3 = 1 → y-axis [0, 1, 0].
+ */
+function cubeModelMatrix(t) {
+  const m = mat4.create();
+  // Cube spin speed = 1.2 rad/s around y-axis
+  mat4.rotate(m, m, 1.2 * t, [0.0, 1.0, 0.0]);
+  return m;
+}
 
 /**
- * createShader – compile one shader; check COMPILE_STATUS; log on failure.
+ * Task B: Solid Model Matrix
+ * Solid orbits the cube at radius 2.5 in variant plane (0 mod 3 = 0 → horizontal around y)
+ * with period T = 10.0 s (6 + 4).
+ * Simultaneously spins around its own y-axis at 2.0 rad/s and pulses by s(t).
+ * 
+ * Matrix multiplication chain:
+ *   M = R_orbit * T_orbit * R_self * S_pulse
+ * 
+ * In glMatrix (which post-multiplies M = M * op):
+ *   1. mat4.rotateY (R_orbit)
+ *   2. mat4.translate (T_orbit)
+ *   3. mat4.rotateY (R_self)
+ *   4. mat4.scale (S_pulse)
+ * 
+ * Supports transformMode for Task E1 write-up experiment:
+ *   - 'normal': M = R_orbit * T * R_self * S
+ *   - 'swapA':  M = T * R_orbit * R_self * S (swap orbit rotation & translation)
+ *   - 'swapB':  M = R_orbit * R_self * T * S (swap translation & self-spin)
+ */
+function solidModelMatrix(t, mode = "normal") {
+  const m = mat4.create();
+  const orbitAngle = (2.0 * Math.PI / 10.0) * t; // T = 10 s
+  const selfAngle  = 2.0 * t;                    // 2.0 rad/s
+  const s          = 0.65 + 0.15 * Math.sin((2.0 * Math.PI * t) / 3.0);
+
+  if (mode === "swapA") {
+    // Experiment E1(a): Swap orbit rotation and translation
+    // M = T * R_orbit * R_self * S
+    mat4.translate(m, m, [2.5, 0.0, 0.0]);
+    mat4.rotate(m, m, orbitAngle, [0.0, 1.0, 0.0]);
+    mat4.rotate(m, m, selfAngle,  [0.0, 1.0, 0.0]);
+    mat4.scale(m, m, [s, s, s]);
+  } else if (mode === "swapB") {
+    // Experiment E1(b): Swap translation and self-spin
+    // M = R_orbit * R_self * T * S
+    mat4.rotate(m, m, orbitAngle, [0.0, 1.0, 0.0]);
+    mat4.rotate(m, m, selfAngle,  [0.0, 1.0, 0.0]);
+    mat4.translate(m, m, [2.5, 0.0, 0.0]);
+    mat4.scale(m, m, [s, s, s]);
+  } else {
+    // Standard correct motion:
+    // 1. Orbit rotation around world y-axis
+    mat4.rotate(m, m, orbitAngle, [0.0, 1.0, 0.0]);
+    // 2. Orbit translation along x-axis (radius 2.5)
+    mat4.translate(m, m, [2.5, 0.0, 0.0]);
+    // 3. Self-spin around object's own local y-axis
+    mat4.rotate(m, m, selfAngle,  [0.0, 1.0, 0.0]);
+    // 4. Uniform scaling pulse
+    mat4.scale(m, m, [s, s, s]);
+  }
+
+  return m;
+}
+
+/**
+ * Helper: compile a WebGL shader with status check and error reporting
  */
 function createShader(gl, type, source) {
   const shader = gl.createShader(type);
@@ -468,7 +536,7 @@ function createShader(gl, type, source) {
 }
 
 /**
- * createProgram – attach shaders, link, check LINK_STATUS; useProgram on success.
+ * Helper: create and link a WebGL program with link status check
  */
 function createProgram(gl, vertexShader, fragmentShader) {
   const program = gl.createProgram();
@@ -478,29 +546,8 @@ function createProgram(gl, vertexShader, fragmentShader) {
 
   if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
     console.error(`Program link error:\n${gl.getProgramInfoLog(program)}`);
+    gl.deleteProgram(program);
     return null;
   }
-
-  gl.useProgram(program);
   return program;
-}
-
-/**
- * initBuffers – create and populate the position and colour buffers.
- * Returns { position, color } or null on failure.
- */
-function initBuffers(gl, positions, colors) {
-  // Position buffer
-  const positionBuffer = gl.createBuffer();
-  if (!positionBuffer) { console.error("Failed to create position buffer"); return null; }
-  gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
-
-  // Colour buffer
-  const colorBuffer = gl.createBuffer();
-  if (!colorBuffer) { console.error("Failed to create colour buffer"); return null; }
-  gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(colors), gl.STATIC_DRAW);
-
-  return { position: positionBuffer, color: colorBuffer };
 }
