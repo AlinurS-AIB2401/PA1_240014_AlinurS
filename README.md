@@ -1,94 +1,115 @@
-# PA1 – 3D Shapes in WebGL
+# PA2 — Matrix Transformations and Perspective
 
 | Field | Value |
 |---|---|
 | **Student** | Alinur S. |
 | **Student ID** | 240014 |
+| **Group** | AIB-2401 |
 | **Course** | AR/VR/XR Applications (AIB), 6B04103 AI Business, 3rd year |
-| **Assignment** | PA1 — 3D Shapes in WebGL |
+| **Assignment** | PA2 — Matrix Transformations and Perspective |
+| **Repository** | https://github.com/AlinurS-AIB2401/PA1_240014_AlinurS |
 
 ---
 
-## My Variant
+## 1. Personal Variant Parameters (ID: 240014)
 
-- **Last digit of ID = 4 → Assigned solid: Two-step staircase**
-  (step profile in the x–y plane, extruded along z; reference vertex count = 60)
+Reading digits from the right:
+- **Last digit = 4**:
+  - **Assigned Solid:** Two-step staircase (PA1 solid, extruded along z, 60 vertices).
+  - **Orbit Period T:** $6 + 4 = \mathbf{10.0\text{ s}}$ per full orbit ($\omega_{\text{orbit}} = 0.2\pi \approx 0.6283\text{ rad/s}$).
+- **2nd-to-last digit = 1**:
+  - **Cube Spin Axis:** $1 \bmod 3 = 1 \implies \mathbf{y\text{-axis}}\ [0, 1, 0]$ (spin speed: $1.2\text{ rad/s}$).
+- **3rd-to-last digit = 0**:
+  - **Orbit Plane:** $0 \bmod 3 = 0 \implies \mathbf{horizontal\text{ plane}}$ (around world y-axis, orbit radius $R = 2.5$).
+- **4th-to-last digit = 0**:
+  - **Camera Setup:** $0 \bmod 2 = 0 \implies \mathbf{eye}\ (0, 2.5, 7)$, $\mathbf{target}\ (0, 0, 0)$, $\mathbf{up}\ (0, 1, 0)$, $\mathbf{FOV}\ 45^\circ$.
 
-- **Second-to-last digit = 1 → 1 mod 4 = 1 → Offset (o_x, o_y) = (−0.15, +0.15)**
-  Visible side faces: **TOP** and **LEFT**
-
-### Depth-illusion formula applied
-```
-xdraw = x + (−0.15) × (z + 0.5)
-ydraw = y + (+0.15) × (z + 0.5)
-```
-Front vertices (z = −0.5): no shift. Back vertices (z = +0.5): full shift (−0.15, +0.15).
+### Fixed Parameters for Everyone:
+- **Cube Spin Speed:** $1.2\text{ rad/s}$ around y-axis.
+- **Orbit Radius:** $2.5\text{ units}$ from cube center.
+- **Solid Self-Spin:** $2.0\text{ rad/s}$ around its own local y-axis.
+- **Solid Scale Pulse:** $s(t) = 0.65 + 0.15 \cdot \sin(2\pi t / 3)$, with $t$ in seconds.
+- **Camera Target & Up:** Target $(0, 0, 0)$, Up $(0, 1, 0)$.
 
 ---
 
-## How to Run
+## 2. How to Run
 
-Serve from a local web server (do **not** open `index.html` directly as a `file://` URL):
+Serve the project folder from a local web server (do **not** open via `file://` URL due to browser security restrictions on WebGL and scripts):
 
 ```bash
-# Option 1 – Python (built-in)
+# Option 1 — Python 3 (built-in)
 python -m http.server 8000
-# Then open: http://localhost:8000
+# Then navigate to: http://localhost:8000
 
-# Option 2 – Node http-server
+# Option 2 — Node.js npx http-server
 npx http-server -p 8000
 
-# Option 3 – VS Code Live Server
-# Install "Live Server" extension, right-click index.html → Open with Live Server
+# Option 3 — VS Code Live Server
+# Right click index.html -> "Open with Live Server"
 ```
 
-Open **Chrome** or **Firefox**. The scene loads immediately on page open.
+Open **Google Chrome** or **Mozilla Firefox**. The 3D animated WebGL scene starts running immediately on page load.
 
 ---
 
-## Key Map
+## 3. Interactive Keyboard Controls (Task E)
 
-| Key | Effect |
+| Key | Action / Effect |
 |---|---|
-| `1` | Drawing mode: `gl.TRIANGLES` (default) |
-| `2` | Drawing mode: `gl.LINE_LOOP` |
-| `3` | Drawing mode: `gl.LINES` |
-| `4` | Drawing mode: `gl.LINE_STRIP` |
-| `5` | Drawing mode: `gl.POINTS` (point size = 6 px) |
-| `6` | Drawing mode: `gl.TRIANGLE_STRIP` |
-| `D` | Toggle depth testing ON / OFF |
-| `S` | Swap draw order: Cube first ↔ Staircase first |
+| `P` | **Pause / Resume:** Freezes simulated time $t$. Resuming continues smoothly from the exact same pose without jumping. |
+| `O` | **Toggle Projection:** Switches between **Perspective** (FOV 45°) and **Orthographic** (half-height 3.1) of matching visual size. |
+| `+` or `=` | **Zoom In (FOV +5°):** Increases vertical FOV up to a limit of $100^\circ$ (Perspective mode only). Accepts both `+` and `=` (no Shift required). |
+| `-` or `_` | **Zoom Out (FOV -5°):** Decreases vertical FOV down to a limit of $20^\circ$ (Perspective mode only). |
+| `←` (ArrowLeft) | **Camera Orbit Left:** Orbits camera eye around world y-axis by $-5^\circ$ per press. |
+| `→` (ArrowRight) | **Camera Orbit Right:** Orbits camera eye around world y-axis by $+5^\circ$ per press. |
+| `R` | **Reset:** Restores camera eye, azimuth, FOV ($45^\circ$), projection (Perspective), and simulation time ($t = 0$) to initial values. |
 
-The status label (top-left of canvas) shows the current mode, depth state and draw order.
-
----
-
-## File Structure
-
-```
-PA1_240014_AlinurS/
-├── index.html    – Canvas (900×900), status div, <script src="index.js">
-├── index.js      – All WebGL/GLSL code (Ch.3 template structure, named functions)
-├── README.md     – This file
-└── writeup.pdf   – E1–E6 write-up with screenshots
-```
+### Status Overlay:
+The top-left status label displays live application state:
+1. **Student ID & Name:** `240014 | Alinur S.` (with `[PAUSED]` indicator when paused)
+2. **Projection Type:** `Perspective` or `Orthographic`
+3. **Field of View:** Current FOV in degrees (or `N/A (ortho)` when orthographic is active)
+4. **Simulated Time (t):** Current simulation time to one decimal place (`X.X s`)
+5. **Frame Rate (FPS):** Accurate rolling average FPS over the last 1.0 second
+6. **Key Control Legend:** Quick shortcut reminder
 
 ---
 
-## Geometry Summary
+## 4. Technical Architecture & Implementation Summary
 
-### Cube (Task B) — 36 vertices
-- Placed in the **left half** (drawn x < 0)
-- Front face: x ∈ [−0.75, −0.25], y ∈ [−0.25, +0.25], z = −0.5
-- All 6 faces present; depth test reveals: **front, top, left**
+- **Task A (Setup & Structure):**
+  - glMatrix 2.8.1 is loaded via `<script>` before `index.js`.
+  - All shaders, buffers, attribute pointers, and uniform locations are initialized **once** during startup outside the render loop.
+  - The canvas dynamically resizes with `window.devicePixelRatio`, correctly calling `gl.viewport` and updating the projection aspect ratio on resize.
+- **Task B (Model Transformations):**
+  - Cube re-modeled centered on origin $[-0.5, +0.5]^3$ (36 vertices).
+  - Two-step staircase centered on its own origin $[-0.5, +0.5]^3$ (60 vertices).
+  - Both shapes reside in a single position buffer and are drawn using separate `gl.drawArrays` calls (`first=0, count=36` and `first=36, count=60`).
+  - Model matrices built via dedicated functions `cubeModelMatrix(t)` and `solidModelMatrix(t)` using `mat4.translate`, `mat4.rotate`, and `mat4.scale`.
+  - Transformation order: $M = R_{\text{orbit}} \cdot T \cdot R_{\text{self}} \cdot S$.
+- **Task C (Camera & Projection):**
+  - Three uniforms with exact vertex shader line: `gl_Position = uProjectionMatrix * uViewMatrix * uModelMatrix * aPosition;`.
+  - View matrix generated with `mat4.lookAt(view, eye, target, up)`.
+  - Perspective projection generated with `mat4.perspective(proj, fovRad, aspect, 1.0, 20.0)`.
+  - Orthographic projection generated with `mat4.ortho(proj, -halfWidth, halfWidth, -halfHeight, halfHeight, 1.0, 20.0)` where `halfHeight = 3.1`.
+  - Depth testing enabled with `gl.enable(gl.DEPTH_TEST)` and `gl.depthFunc(gl.LEQUAL)`.
+- **Task D (Animation & Frame-Rate Independence):**
+  - Driven by `requestAnimationFrame(render)` computing $\Delta t = \min(\text{now} - \text{then}, 0.1)$.
+  - Time $t$ is incremented by $\Delta t$; motions are functions of $t$ rather than frame count.
+  - $\Delta t$ is clamped to 0.1 s to prevent animation jumps when switching browser tabs.
+- **Task E (Controls & Diagnostics):**
+  - Complete keyboard navigation with bounds checking and status feedback.
 
-### Two-step Staircase (Task C) — 60 vertices
-- Placed in the **right half** (drawn x > 0)
-- L-shaped profile: bottom step x ∈ [0.15, 0.65], top step x ∈ [0.15, 0.40]
-- 8 faces: front, back, bottom, right, notch-H, notch-V, top, left
-- Same position buffer as cube (`first = 36`, `count = 60`)
+---
 
-### Colours (Task D)
-- Each face has a distinct flat colour; no two adjacent faces share a colour
-- **Gradient face (cube):** front face (red → orange → yellow)
-- **Gradient face (staircase):** front face (purple → magenta → pink)
+## 5. File Structure of Submission
+
+```
+PA2_240014_AlinurS.zip
+├── index.html        – Fullscreen canvas, glMatrix 2.8.1 tag, status overlay, index.js
+├── index.js          – Complete WebGL application and transformation logic
+├── README.md         – This documentation and variant guide
+├── writeup.pdf       – 3-page illustrated write-up answering E1–E6 with development log
+└── demo.webm         – 25-second HD video recording of orbit and all key controls
+```
